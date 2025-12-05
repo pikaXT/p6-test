@@ -1,7 +1,2 @@
 streamlit
-json
-sys
-pandas
-google.generativeai
-re
-os
+google-generativeai
