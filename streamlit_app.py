@@ -1,3 +1,9 @@
+import pandas as pd
+import google.generativeai as genai
+import sys
+import json
+import re
+import os # For API Key
 
 # --- Configuration ---
 # These file paths MUST be correct on the computer running the app
@@ -498,3 +504,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
