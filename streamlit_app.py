@@ -1,5 +1,5 @@
 import pandas as pd
-import google.generativeai as genai
+import google-generativeai as genai
 import sys
 import json
 import re
@@ -504,4 +504,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
