@@ -2,6 +2,6 @@ streamlit
 json
 sys
 pandas
-google-generativeai
+streamlit google-generativeai
 re
 os
