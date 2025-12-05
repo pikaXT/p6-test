@@ -1,7 +1,7 @@
-streamlit as st
-pandas as pd
-google.generativeai as genai
-sys
+streamlit
 json
+sys
+pandas
+google.generativeai
 re
 os
