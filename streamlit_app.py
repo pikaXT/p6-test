@@ -11,8 +11,8 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 
 # --- Configuration ---
 # NOTE: Upload these files to your GitHub repo in the same folder as this script
-MATH_EXCEL_FILE_PATH = 'math.xlsx' 
-SCIENCE_EXCEL_FILE_PATH = 'science.xlsx'
+MATH_EXCEL_FILE_PATH = 'Math.xlsx' 
+SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
 GEMINI_MODEL = 'gemini-2.0-flash-lite'
 QUESTION_COLUMN_NAME = 'Question Text'
@@ -503,4 +503,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
