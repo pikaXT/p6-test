@@ -10,10 +10,11 @@ import streamlit as st
 st.set_page_config(page_title="AI Question Generator", layout="wide")
 
 # --- Configuration ---
+# Ensure these files exist in your folder
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
-GEMINI_MODEL = 'gemini-2.5-flash-lite' 
+GEMINI_MODEL = 'gemini-1.5-flash' 
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
@@ -26,8 +27,8 @@ def initialize_session_state():
         "latest_generated_list": [],
         "current_index": 0,
         "answer_checked": False, 
-        "grading_feedback": None, # Stores the AI's feedback for the current question
-        "question_type": "MCQ"    # Tracks if we are in MCQ or Open-Ended mode
+        "grading_feedback": None, 
+        "question_type": "MCQ"    
     }
     
     for key, value in default_values.items():
@@ -67,21 +68,33 @@ def load_and_select_questions(file_path, num_questions, column_name):
     questions_series = df[column_name].sample(n=num_questions)
     return questions_series
 
-# --- NEW: Helper to Grade Answers via API ---
-def grade_student_answer(question, model_answer, student_answer):
-    """Sends the student's answer to Gemini to be graded."""
+# --- UPDATED: Strict AI Grading Logic ---
+def grade_student_answer(question, model_answer, student_answer, subject):
+    """
+    Sends the student's answer to Gemini to be graded with strict rules.
+    """
+    if subject == "Math":
+        grading_criteria = (
+            "1. **Check for Equations:** The student MUST show the equation or method used (e.g., '5 x 10 = 50'). If they only provide the final number, mark it as 'Partial' and ask for working.\n"
+            "2. **Check Accuracy:** The final answer must be correct.\n"
+        )
+    else: # Science
+        grading_criteria = (
+            "1. **Check Keywords:** The student MUST use specific scientific keywords relevant to the topic (e.g., 'gain heat', 'exposed surface area').\n"
+            "2. **Concept Application:** They must apply the concept to the specific scenario in the question.\n"
+        )
+
     prompt = (
-        "You are a strict Primary School Teacher in Singapore. Grade the student's answer.\n"
+        f"You are a strict Primary 6 {subject} Teacher in Singapore grading a high-ability student.\n"
         f"**Question:** {question}\n"
-        f"**Correct Model Answer:** {model_answer}\n"
+        f"**Model Answer:** {model_answer}\n"
         f"**Student Answer:** {student_answer}\n\n"
-        "**Task:**\n"
-        "1. Determine if the student is Correct, Partially Correct, or Incorrect.\n"
-        "2. Identify any missing keywords or concepts.\n"
-        "3. Provide brief, encouraging feedback on how to improve.\n\n"
+        "**Your Grading Rules:**\n"
+        f"{grading_criteria}\n"
+        "3. Be encouraging but strict on precision.\n\n"
         "**Output Format:**\n"
-        "**Status:** [Correct/Partial/Incorrect]\n"
-        "**Feedback:** [Your feedback here]"
+        "**Grade:** [Correct / Partially Correct / Incorrect]\n"
+        "**Feedback:** [Specific advice on what is missing (e.g. 'You forgot to write the equation')]"
     )
     try:
         response = genai.GenerativeModel(GEMINI_MODEL).generate_content(prompt)
@@ -93,10 +106,18 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate, spe
     # Set up Difficulty Context
     if subject == 'math':
         subject_name = "Math"
-        difficulty_text = "Challenging (PSLE Standard)"
+        difficulty_text = "EXTREMELY CHALLENGING (PSLE AL1 / Olympiad Standard)"
+        open_ended_instruction = (
+            "Generate complex word problems involving **heuristics** (e.g., Working Backwards, Assumption, Grouping).\n"
+            "**MANDATORY:** The question text MUST end with the phrase: **'Write your equation/working clearly and find the answer.'**"
+        )
     else:
         subject_name = "Science" 
-        difficulty_text = "Challenging (PSLE Standard)"
+        difficulty_text = "EXTREMELY CHALLENGING (PSLE AL1 / Application Standard)"
+        open_ended_instruction = (
+            "Generate questions based on **experimental setups** or **analyzing graphs/data**.\n"
+            "The question should require explaining 'Why' or 'How' using scientific concepts."
+        )
 
     # --- DIFFERENT PROMPTS FOR MCQ vs OPEN-ENDED ---
     if question_type == "MCQ":
@@ -116,17 +137,18 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate, spe
             "Answer: (B)\n"
             "Reasoning: ...\n"
         )
-    else: # Open-Ended
+    else: # Open-Ended (UPDATED FOR HARDER DIFFICULTY)
         instruction = (
-            f"Your task is to generate {num_to_generate} new **Open-Ended Questions (Structured)**."
-            "**DO NOT PROVIDE OPTIONS.** Instead, provide a comprehensive 'Model Answer' that includes the key marking points/keywords required."
+            f"Your task is to generate {num_to_generate} new **Open-Ended Questions**.\n"
+            f"{open_ended_instruction}\n"
+            "**DO NOT PROVIDE OPTIONS.** Instead, provide a 'Model Answer' that shows the full working or key marking points."
         )
         output_format_example = (
             "[Reference: 0]\n"
-            "Question: ...\n"
-            "Difficulty: Hard\n"
+            "Question: (Complex question text here...)\n"
+            "Difficulty: AL1 Hard\n"
             f"Topic: {specific_topic}\n"
-            "Answer: (The full model answer with keywords)\n"
+            "Answer: (Full equation/working and final statement)\n"
         )
 
     system_message = (
@@ -255,7 +277,7 @@ def process_generation_loop(file_path, subject_lower, num_to_generate, specific_
 def next_q():
     st.session_state.current_index += 1
     st.session_state.answer_checked = False
-    st.session_state.grading_feedback = None # Reset feedback
+    st.session_state.grading_feedback = None 
 
 def prev_q():
     if st.session_state.current_index > 0:
@@ -266,14 +288,13 @@ def prev_q():
 def check_answer_handler():
     st.session_state.answer_checked = True
 
-def grade_answer_handler(question_text, correct_ans, user_ans):
-    # This function triggers the API grading
-    with st.spinner("👩‍🏫 The AI Teacher is marking your answer..."):
-        feedback = grade_student_answer(question_text, correct_ans, user_ans)
+def grade_answer_handler(question_text, correct_ans, user_ans, subject):
+    with st.spinner("👩‍🏫 The AI Teacher is checking your equations and keywords..."):
+        feedback = grade_student_answer(question_text, correct_ans, user_ans, subject)
         st.session_state.grading_feedback = feedback
         st.session_state.answer_checked = True
 
-def display_question_session():
+def display_question_session(subject_name):
     generated_list = st.session_state.latest_generated_list
     total_count = len(generated_list)
     
@@ -285,7 +306,7 @@ def display_question_session():
     
     # Header
     st.header(f"Question {current_q_index + 1} of {total_count}")
-    st.caption(f"Topic: {item.get('topic', 'N/A')} | Mode: {item.get('type', 'N/A')}")
+    st.caption(f"Topic: {item.get('topic', 'N/A')} | Mode: {item.get('type', 'N/A')} | Difficulty: {item.get('difficulty', 'Hard')}")
     st.write("---")
     
     # Display Question
@@ -317,9 +338,10 @@ def display_question_session():
                     st.error(f"❌ Incorrect. You picked {user_letter}. Correct: {correct_letter}")
                 st.info(f"**Reasoning:** {item.get('reasoning')}")
 
-    # --- MODE 2: OPEN-ENDED (Text Input + AI Grading) ---
+    # --- MODE 2: OPEN-ENDED (Harder + Equation Check) ---
     else:
-        user_text = st.text_area("Type your answer here:", height=150, key=f"text_q{current_q_index}")
+        placeholder_text = "Type your equation and final answer here..." if subject_name == "Math" else "Explain your answer using keywords..."
+        user_text = st.text_area("Your Answer:", placeholder=placeholder_text, height=150, key=f"text_q{current_q_index}")
         
         st.write("")
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -327,7 +349,7 @@ def display_question_session():
         # Grading Button
         if col2.button("Submit & Grade", key="btn_grade"):
             if user_text:
-                grade_answer_handler(item['question'], item['answer'], user_text)
+                grade_answer_handler(item['question'], item['answer'], user_text, subject_name)
             else:
                 st.warning("Please type an answer first.")
 
@@ -336,7 +358,7 @@ def display_question_session():
             st.write("---")
             st.markdown("### 📝 Teacher's Feedback")
             st.markdown(st.session_state.grading_feedback)
-            with st.expander("View Model Answer"):
+            with st.expander("View Model Solution"):
                 st.info(item.get('answer'))
 
     # Navigation
@@ -364,7 +386,7 @@ def main():
     elif subject_name == "Science":
         selected_topic = st.sidebar.selectbox("   Select Topic:", ["Diversity", "Cycles", "Systems", "Interactions", "Energy"])
 
-    # 3. Question Type (The New Feature!)
+    # 3. Question Type
     question_type = st.sidebar.radio("2. Question Type:", ["MCQ", "Open-Ended"])
     
     num_to_generate = st.sidebar.number_input("3. How many questions?", min_value=1, max_value=10, value=3)
@@ -391,8 +413,7 @@ def main():
                     st.rerun() 
     
     if st.session_state.latest_generated_list:
-        display_question_session()
+        display_question_session(subject_name)
 
 if __name__ == "__main__":
     main()
-
