@@ -4,17 +4,20 @@ import sys
 import json
 import re
 import os
-import streamlit as st  # Added missing import
+import time  # <--- CRITICAL IMPORT FOR FIXING 429 ERRORS
+import streamlit as st 
 
 # --- CRITICAL: This must be the first Streamlit command ---
 st.set_page_config(page_title="AI Question Generator", layout="wide")
 
 # --- Configuration ---
-# NOTE: Upload these files to your GitHub repo in the same folder as this script
+# NOTE: Ensure 'Math.xlsx' and 'Science.xlsx' are in the same folder (Github repo)
 MATH_EXCEL_FILE_PATH = 'Math.xlsx' 
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
-GEMINI_MODEL = 'gemini-2.0-flash-lite'
+# Changed to 1.5-flash for better stability and higher rate limits
+GEMINI_MODEL = 'gemini-1.5-flash' 
+
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
@@ -40,7 +43,7 @@ def initialize_session_state():
 def load_and_select_questions(file_path, num_questions, column_name):
     # Check if file exists in the current directory
     if not os.path.exists(file_path):
-        st.error(f"Error: The file '{file_path}' was not found in the app directory. Please upload it to your GitHub repository.")
+        st.error(f"Error: The file '{file_path}' was not found. Please ensure it is uploaded to your GitHub repository in the same folder as this script.")
         return None
 
     st.info(f"Loading reference questions from '{file_path}'...")
@@ -287,6 +290,10 @@ def process_generation_loop(file_path, subject_lower, num_to_generate):
         
         st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} more questions...")
         
+        # --- CRITICAL FIX: SAFETY PAUSE TO PREVENT 429 ERRORS ---
+        time.sleep(5) 
+        # ---------------------------------------------------------
+        
         system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL, f"{subject_lower} MCQ Task", subject_lower)
         st.session_state.total_tokens_used += tokens_used
@@ -400,7 +407,6 @@ def display_mcq_session():
 # --- Main Streamlit App Function ---
 
 def main():
-    # st.set_page_config is removed from here and moved to top of file
     st.title("📚 AI Question Generator")
     
     # --- 1. INITIALIZE SESSION STATE ---
@@ -503,5 +509,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
