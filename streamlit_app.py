@@ -4,25 +4,23 @@ import sys
 import json
 import re
 import os
-import time # <--- FIX 1: Required for stopping the "reload" crash
+import time 
 import streamlit as st 
 
-# --- FIX 2: Page Config MUST be the very first Streamlit command ---
 st.set_page_config(page_title="AI Question Generator", layout="wide")
 
 # --- Configuration ---
-# NOTE: Ensure these files are in your GitHub folder
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
+GK_EXCEL_FILE_PATH = 'GeneralKnowledge.xlsx' # <--- NEW FILE PATH
 
-GEMINI_MODEL = 'gemini-2.5-flash-lite' # <--- FIX 3: Use Flash (Stable) instead of Lite (Preview)
+GEMINI_MODEL = 'gemini-1.5-flash' 
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
 
 # --- Session State Initialization ---
 def initialize_session_state():
-    """Initializes all session state variables safely at the start."""
     default_values = {
         "total_tokens_used": 0,
         "all_generated_questions": [],
@@ -124,11 +122,12 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
         reasoning_text = "Provide the **full arithmetic solution** using a concise, numbered sequence of calculations. **DO NOT use algebra**. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
         topic_examples = "Fractions, Algebra, Ratios"
     else:
-        subject_name = "Science"
+        # Generic prompt for Science or General Knowledge
+        subject_name = subject.title()
         difficulty_text = "moderately harder"
         difficulty_detail = "require **one or two extra steps**"
-        reasoning_text = "Provide 2-3 key scientific facts or principles necessary to reach the conclusion. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        topic_examples = "Energy, Life Cycles, Matter"
+        reasoning_text = "Provide 2-3 key facts or principles necessary to reach the conclusion. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
+        topic_examples = "Key Concepts, Application, Analysis"
 
     system_message = (
         f"You are an expert **{subject_name}** tutor in Singapore. Your task is to help a Primary 6 student (11-12 years old)."
@@ -287,9 +286,7 @@ def process_generation_loop(file_path, subject_lower, num_to_generate):
         
         st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} more questions...")
         
-        # --- FIX 4: Safety Pause to stop 429 Errors ---
         time.sleep(5) 
-        # ----------------------------------------------
         
         system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL, f"{subject_lower} MCQ Task", subject_lower)
@@ -416,7 +413,7 @@ def main():
 
     subject_name = st.sidebar.selectbox(
         "1. Choose a subject:",
-        ["English", "Chinese", "Math", "Science"]
+        ["English", "Chinese", "Math", "Science", "General Knowledge"]
     )
 
     # Logic for num_questions
@@ -425,7 +422,7 @@ def main():
             "2. How many comprehension questions?", 
             min_value=1, max_value=20, value=10
         )
-    else: # Math or Science
+    else: # Math, Science, or General Knowledge
         num_to_generate = st.sidebar.number_input(
             "2. How many MCQs to generate?", 
             min_value=1, max_value=20, value=5
@@ -479,15 +476,23 @@ def main():
                         else:
                             st.error("Failed to get a response from the AI.")
 
-                    elif subject_lower in ['math', 'science']:
-                        # --- MCQ ---
-                        file_path = MATH_EXCEL_FILE_PATH if subject_lower == 'math' else SCIENCE_EXCEL_FILE_PATH
+                    # --- UPDATED LOGIC FOR MCQ SUBJECTS ---
+                    elif subject_lower in ['math', 'science', 'general knowledge']:
+                        
+                        # Select the right file
+                        if subject_lower == 'math':
+                            file_path = MATH_EXCEL_FILE_PATH
+                        elif subject_lower == 'science':
+                            file_path = SCIENCE_EXCEL_FILE_PATH
+                        else:
+                            file_path = GK_EXCEL_FILE_PATH
+                            
                         generated_list = process_generation_loop(file_path, subject_lower, num_to_generate)
                         
                         if generated_list:
                             st.session_state.latest_generated_list = generated_list
                             st.subheader(f"✅ Generation Complete! Starting Interactive Review ({len(generated_list)}/{num_to_generate})")
-                            st.rerun() # <--- FIX 5: Force app to reload nicely after data is ready
+                            st.rerun() 
                         elif not generated_list:
                              st.error("Failed to generate any valid questions after all retry attempts.")
                             
@@ -506,4 +511,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
