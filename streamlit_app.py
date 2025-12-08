@@ -12,7 +12,7 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 # --- Configuration ---
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
-GK_EXCEL_FILE_PATH = 'GeneralKnowledge.xlsx' # <--- NEW FILE PATH
+GK_EXCEL_FILE_PATH = 'GeneralKnowledge.xlsx'
 
 GEMINI_MODEL = 'gemini-1.5-flash' 
 QUESTION_COLUMN_NAME = 'Question Text'
@@ -114,7 +114,8 @@ def format_prompt_for_comprehension(subject, num_to_generate):
     
     return system_message, user_prompt
 
-def format_prompt_for_generation(questions_series, subject, num_to_generate):
+# --- UPDATE: Added 'specific_topic' argument ---
+def format_prompt_for_generation(questions_series, subject, num_to_generate, specific_topic="General"):
     if subject == 'math':
         subject_name = "Math"
         difficulty_text = "moderately harder"
@@ -122,7 +123,6 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
         reasoning_text = "Provide the **full arithmetic solution** using a concise, numbered sequence of calculations. **DO NOT use algebra**. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
         topic_examples = "Fractions, Algebra, Ratios"
     else:
-        # Generic prompt for Science or General Knowledge
         subject_name = subject.title()
         difficulty_text = "moderately harder"
         difficulty_detail = "require **one or two extra steps**"
@@ -132,11 +132,11 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
     system_message = (
         f"You are an expert **{subject_name}** tutor in Singapore. Your task is to help a Primary 6 student (11-12 years old)."
         "\n\n"
-        f"I will provide a list of reference **{subject_name}** questions (indexed 0, 1, 2, etc.)."
-        f"Your task is to generate {num_to_generate} new **multiple-choice {subject_name} questions (MCQs)**."
+        f"I will provide a list of reference **{subject_name}** questions."
+        f"Your task is to generate {num_to_generate} new **multiple-choice questions** specifically about the topic: **{specific_topic}**."
         "\n\n"
         "**DIFFICULTY REQUIREMENT:**"
-        f"The new questions must be **{difficulty_text}** than the reference questions. They should test the same core concept but {difficulty_detail}, while still being solvable by a P6 student."
+        f"The new questions must be **{difficulty_text}** than the reference questions. They should test **{specific_topic}** but {difficulty_detail}, while still being solvable by a P6 student."
         "\n\n"
         "**CRITICAL OUTPUT CONSTRAINTS FOR DISPLAY (MANDATORY):**"
         "To ensure the questions fit neatly on a computer screen without horizontal scrolling, the following rules must be strictly adhered to:"
@@ -146,8 +146,8 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
         "\n\n"
         "**INTERNAL REVIEW PROCESS (MANDATORY):**"
         "For each new question you create, you must **first think step-by-step**:"
-        f"1.  **Look at the reference question's topic** (e.g., {topic_examples})."
-        "2.  **Think of a new, similar scenario** that is different from the reference."
+        f"1.  **Topic Check:** Does this question specifically test **{specific_topic}**? If not, discard it."
+        "2.  **Think of a scenario** involving this topic."
         f"3.  **Apply Difficulty:** How can I make this new scenario **{difficulty_text}**?"
         "4.  **Identify Fields:** What is the specific `Topic`? What is the `Difficulty`? What is the `Reasoning` for the correct answer (must be a numbered breakdown/fact list)?"
         "5.  **Check for Variety:** Is this new question too similar to one I've already made? If yes, pick a different reference question."
@@ -160,7 +160,7 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
         "[Reference: 0]\n"
         "Question: Your new question text...\n"
         "Difficulty: (e.g., Medium, Hard)\n"
-        f"Topic: (e.g., {topic_examples})\n"
+        f"Topic: {specific_topic}\n"
         "A) Option A\n"
         "B) Option B\n"
         "C) Option C\n"
@@ -176,7 +176,7 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate):
     user_message_parts = [f"Here are the reference **{subject_name}** questions (indexed 0-{len(questions_series)-1}):\n\n"]
     for i, question_text in enumerate(questions_series):
         user_message_parts.append(f"{i}. {question_text}\n")
-    user_message_parts.append(f"\nPlease generate {num_to_generate} new, unique, **{difficulty_text}** {subject_name} MCQs with all required fields, following the exact output format.")
+    user_message_parts.append(f"\nPlease generate {num_to_generate} new, unique, **{difficulty_text}** {subject_name} MCQs specifically on the topic **{specific_topic}**, following the exact output format.")
     
     return system_message, "".join(user_message_parts)
 
@@ -273,7 +273,8 @@ def parse_generated_questions(text_blob, questions_list_so_far):
         
     return new_questions
 
-def process_generation_loop(file_path, subject_lower, num_to_generate):
+# --- UPDATE: Added 'specific_topic' argument ---
+def process_generation_loop(file_path, subject_lower, num_to_generate, specific_topic):
     final_generated_list = []
     retries_used = 0
     questions_series = load_and_select_questions(file_path, QUESTIONS_TO_SELECT, QUESTION_COLUMN_NAME)
@@ -284,11 +285,12 @@ def process_generation_loop(file_path, subject_lower, num_to_generate):
         questions_needed = num_to_generate - len(final_generated_list)
         reference_subset = questions_series.sample(min(QUESTIONS_TO_SELECT, questions_needed * 5, len(questions_series))) 
         
-        st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} more questions...")
+        st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} more questions on '{specific_topic}'...")
         
         time.sleep(5) 
         
-        system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed)
+        # --- UPDATE: Passing specific_topic to the prompt formatter ---
+        system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed, specific_topic)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL, f"{subject_lower} MCQ Task", subject_lower)
         st.session_state.total_tokens_used += tokens_used
         
@@ -403,26 +405,44 @@ def display_mcq_session():
 def main():
     st.title("📚 AI Question Generator")
     
-    # --- 1. INITIALIZE SESSION STATE ---
     initialize_session_state()
 
-    # --- Sidebar for Controls ---
     st.sidebar.header("⚙️ Configuration")
 
     api_key = st.sidebar.text_input("Enter your Google API Key:", type="password")
 
+    # 1. Main Subject Selection
     subject_name = st.sidebar.selectbox(
         "1. Choose a subject:",
         ["English", "Chinese", "Math", "Science", "General Knowledge"]
     )
 
-    # Logic for num_questions
+    # 2. Logic for Topics Dropdown (The New Feature!)
+    selected_topic = "General" # Default
+
+    if subject_name == "Math":
+        selected_topic = st.sidebar.selectbox(
+            "   Select a Math Topic:",
+            ["Whole Numbers", "Fractions", "Ratio", "Percentage", "Algebra", "Geometry (Angles)", "Circles", "Speed", "Volume", "Pie Charts"]
+        )
+    elif subject_name == "Science":
+        selected_topic = st.sidebar.selectbox(
+            "   Select a Science Topic:",
+            ["Diversity (Living Things)", "Cycles (Water/Life)", "Systems (Body/Plant)", "Interactions (Forces/Environment)", "Energy (Light/Heat/Electricity)"]
+        )
+    elif subject_name == "General Knowledge":
+        selected_topic = st.sidebar.selectbox(
+            "   Select a GK Topic:",
+            ["World Geography", "Current Affairs", "History", "Technology", "Nature"]
+        )
+    # Note: English/Chinese usually focus on passage generation, so we keep them simple for now.
+
     if subject_name in ["English", "Chinese"]:
         num_to_generate = st.sidebar.number_input(
             "2. How many comprehension questions?", 
             min_value=1, max_value=20, value=10
         )
-    else: # Math, Science, or General Knowledge
+    else: 
         num_to_generate = st.sidebar.number_input(
             "2. How many MCQs to generate?", 
             min_value=1, max_value=20, value=5
@@ -435,19 +455,17 @@ def main():
     generation_status_placeholder = st.empty()
 
     if generate_button:
-        # Reset specific session vars for new generation
         st.session_state.total_tokens_used = 0 
         st.session_state.latest_generated_list = []
         st.session_state.current_index = 0
         st.session_state.answer_checked = False
         
-        # --- Validation ---
         if not api_key:
             st.error("Please enter your Google API Key in the sidebar.")
         else:
             try:
                 genai.configure(api_key=api_key)
-                generation_status_placeholder.success("API Key configured. Generating...")
+                generation_status_placeholder.success(f"Generating {subject_name} ({selected_topic}) questions...")
                 
                 with st.spinner("Generating questions... This may take a moment."):
                     
@@ -479,7 +497,6 @@ def main():
                     # --- UPDATED LOGIC FOR MCQ SUBJECTS ---
                     elif subject_lower in ['math', 'science', 'general knowledge']:
                         
-                        # Select the right file
                         if subject_lower == 'math':
                             file_path = MATH_EXCEL_FILE_PATH
                         elif subject_lower == 'science':
@@ -487,7 +504,8 @@ def main():
                         else:
                             file_path = GK_EXCEL_FILE_PATH
                             
-                        generated_list = process_generation_loop(file_path, subject_lower, num_to_generate)
+                        # --- UPDATE: Pass the 'selected_topic' to the loop ---
+                        generated_list = process_generation_loop(file_path, subject_lower, num_to_generate, selected_topic)
                         
                         if generated_list:
                             st.session_state.latest_generated_list = generated_list
@@ -499,13 +517,11 @@ def main():
             except Exception as e:
                 st.error(f"An unexpected error occurred during the process: {e}")
     
-    # --- INTERACTIVE MCQ DISPLAY (Persists across reruns) ---
     if st.session_state.latest_generated_list:
         st.markdown("---")
         display_mcq_session()
         st.markdown("---")
 
-    # --- FINAL TOKEN COUNT ---
     st.subheader("💰 Token Usage Summary")
     st.info(f"Total tokens consumed for this session: **{st.session_state.total_tokens_used:,}** tokens.")
 
