@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import sys
@@ -7,8 +8,8 @@ import os # For API Key
 
 # --- Configuration ---
 # These file paths MUST be correct on the computer running the app
-MATH_EXCEL_FILE_PATH = r'C:\HJ-Local\XT_TestData\Can you do it for these pdf also and place them i....xlsx'
-SCIENCE_EXCEL_FILE_PATH = r'C:\Users\xtxzx\Downloads\Can you just make it so that i can preview.xlsx'
+MATH_EXCEL_FILE_PATH = r'Math.xlsx'
+SCIENCE_EXCEL_FILE_PATH = r'Science.xlsx'
 
 GEMINI_MODEL = 'gemini-2.0-flash-lite'
 QUESTION_COLUMN_NAME = 'Question Text'
@@ -502,7 +503,4 @@ def main():
 
 # --- This part must be at the very end ---
 if __name__ == "__main__":
-
     main()
-
-
