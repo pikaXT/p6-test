@@ -3,24 +3,18 @@ import google.generativeai as genai
 import sys
 import json
 import re
-import os
-import time  # <--- CRITICAL IMPORT FOR FIXING 429 ERRORS
-import streamlit as st 
-
-# --- CRITICAL: This must be the first Streamlit command ---
-st.set_page_config(page_title="AI Question Generator", layout="wide")
+import os # For API Key
 
 # --- Configuration ---
-# NOTE: Ensure 'Math.xlsx' and 'Science.xlsx' are in the same folder (Github repo)
-MATH_EXCEL_FILE_PATH = 'Math.xlsx' 
-SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
+# These file paths MUST be correct on the computer running the app
+MATH_EXCEL_FILE_PATH = r'C:\HJ-Local\XT_TestData\Can you do it for these pdf also and place them i....xlsx'
+SCIENCE_EXCEL_FILE_PATH = r'C:\Users\xtxzx\Downloads\Can you just make it so that i can preview.xlsx'
 
-# Changed to 1.5-flash for better stability and higher rate limits
-GEMINI_MODEL = 'gemini-2.5-flash-lite' 
-
+GEMINI_MODEL = 'gemini-2.0-flash-lite'
 QUESTION_COLUMN_NAME = 'Question Text'
-QUESTIONS_TO_SELECT = 50 
-MAX_RETRIES = 5 
+QUESTIONS_TO_SELECT = 50 # Number of questions to read from Excel for reference
+MAX_RETRIES = 5 # Maximum times to try regenerating missing questions
+# --- End Configuration ---
 
 # --- Session State Initialization ---
 def initialize_session_state():
@@ -30,25 +24,23 @@ def initialize_session_state():
         "all_generated_questions": [],
         "latest_generated_list": [],
         "current_index": 0,
-        "answer_checked": False, 
-        "user_selections": {}   
+        "answer_checked": False, # New: Tracks if user clicked 'Check Answer'
+        "user_selections": {}    # New: Stores user answers for persistence
     }
     
     for key, value in default_values.items():
         if key not in st.session_state:
             st.session_state[key] = value
 
-# --- Core Logic Functions ---
+# --- Core Logic Functions (Generation/Parsing Logic Unchanged) ---
 
 def load_and_select_questions(file_path, num_questions, column_name):
-    # Check if file exists in the current directory
-    if not os.path.exists(file_path):
-        st.error(f"Error: The file '{file_path}' was not found. Please ensure it is uploaded to your GitHub repository in the same folder as this script.")
-        return None
-
     st.info(f"Loading reference questions from '{file_path}'...")
     try:
         df = pd.read_excel(file_path) 
+    except FileNotFoundError:
+        st.error(f"Error: The file '{file_path}' was not found. Please check the file path in the script.")
+        return None
     except Exception as e:
         st.error(f"Error reading Excel file: {e}")
         return None
@@ -237,8 +229,8 @@ def parse_generated_questions(text_blob, questions_list_so_far):
         r"C\)\s*(.*?)\n\s*"                
         r"D\)\s*(.*?)\n\s*"                
         r"Answer:\s*(.*?)\n\s*"            
-        r"Reasoning:\s*(.*?)"            
-        r"(?=\n\[Reference:|\Z)",      
+        r"Reasoning:\s*(.*?)"           
+        r"(?=\n\[Reference:|\Z)",     
         re.IGNORECASE | re.DOTALL
     )
     
@@ -270,7 +262,7 @@ def parse_generated_questions(text_blob, questions_list_so_far):
             "topic": topic.strip(),
             "options": {"A": opt_a.strip(), "B": opt_b.strip(), "C": opt_c.strip(), "D": opt_d.strip()},
             "reference_index": ref_index.strip(),
-            "answer": answer.strip(), 
+            "answer": answer.strip(), # Expected format: "(B)" or "B"
             "reasoning": reasoning.strip()
         }
         new_questions.append(question_obj)
@@ -289,10 +281,6 @@ def process_generation_loop(file_path, subject_lower, num_to_generate):
         reference_subset = questions_series.sample(min(QUESTIONS_TO_SELECT, questions_needed * 5, len(questions_series))) 
         
         st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} more questions...")
-        
-        # --- CRITICAL FIX: SAFETY PAUSE TO PREVENT 429 ERRORS ---
-        time.sleep(5) 
-        # ---------------------------------------------------------
         
         system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL, f"{subject_lower} MCQ Task", subject_lower)
@@ -321,12 +309,12 @@ def process_generation_loop(file_path, subject_lower, num_to_generate):
 
 def next_q():
     st.session_state.current_index += 1
-    st.session_state.answer_checked = False 
+    st.session_state.answer_checked = False # Reset for new question
 
 def prev_q():
     if st.session_state.current_index > 0:
         st.session_state.current_index -= 1
-        st.session_state.answer_checked = False 
+        st.session_state.answer_checked = False # Reset for new question
 
 def check_answer_handler():
     st.session_state.answer_checked = True
@@ -336,6 +324,7 @@ def display_mcq_session():
     generated_list = st.session_state.latest_generated_list
     total_count = len(generated_list)
     
+    # Safety Check
     if st.session_state.current_index >= total_count:
         st.session_state.current_index = 0
 
@@ -348,10 +337,11 @@ def display_mcq_session():
     st.caption(f"Topic: {item.get('topic', 'N/A')} | Difficulty: {item.get('difficulty', 'N/A')}")
     st.write("---")
     
-    # -- Display Question Text --
+    # -- Display Question Text (using st.code for consistent font) --
     st.code(item.get('question', 'N/A'), language='text')
 
     # -- Interactive Radio Options --
+    # Construct options list for radio button
     radio_options = [
         f"A) {options.get('A', 'N/A')}",
         f"B) {options.get('B', 'N/A')}",
@@ -359,6 +349,7 @@ def display_mcq_session():
         f"D) {options.get('D', 'N/A')}"
     ]
     
+    # Use a unique key for the radio based on the question index to preserve selection
     selected_option = st.radio(
         "Select your answer:", 
         radio_options, 
@@ -373,7 +364,7 @@ def display_mcq_session():
     
     # Check Answer Button
     if col2.button("Check Answer", on_click=check_answer_handler, key="btn_check"):
-        pass 
+        pass # Logic is handled by the session state update
     
     # Navigation Buttons
     if current_q_index > 0:
@@ -388,8 +379,10 @@ def display_mcq_session():
     if st.session_state.answer_checked:
         st.write("---")
         if selected_option:
+            # Extract the user's selected letter (A, B, C, or D)
             user_letter = selected_option[0] 
             
+            # Clean the correct answer string (e.g., "(B)" -> "B")
             correct_answer_raw = item.get('answer', 'N/A')
             correct_letter_match = re.search(r"[ABCD]", correct_answer_raw)
             correct_letter = correct_letter_match.group(0) if correct_letter_match else "?"
@@ -407,6 +400,7 @@ def display_mcq_session():
 # --- Main Streamlit App Function ---
 
 def main():
+    st.set_page_config(page_title="AI Question Generator", layout="wide")
     st.title("📚 AI Question Generator")
     
     # --- 1. INITIALIZE SESSION STATE ---
@@ -415,7 +409,6 @@ def main():
     # --- Sidebar for Controls ---
     st.sidebar.header("⚙️ Configuration")
 
-    # Use text_input for API Key (Password type masks it)
     api_key = st.sidebar.text_input("Enter your Google API Key:", type="password")
 
     subject_name = st.sidebar.selectbox(
@@ -507,6 +500,9 @@ def main():
     st.subheader("💰 Token Usage Summary")
     st.info(f"Total tokens consumed for this session: **{st.session_state.total_tokens_used:,}** tokens.")
 
+# --- This part must be at the very end ---
 if __name__ == "__main__":
+
     main()
+
 
