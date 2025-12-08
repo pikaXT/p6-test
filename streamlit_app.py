@@ -12,7 +12,6 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 # --- Configuration ---
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
-GK_EXCEL_FILE_PATH = 'GeneralKnowledge.xlsx'
 
 GEMINI_MODEL = 'gemini-1.5-flash' 
 QUESTION_COLUMN_NAME = 'Question Text'
@@ -114,7 +113,6 @@ def format_prompt_for_comprehension(subject, num_to_generate):
     
     return system_message, user_prompt
 
-# --- UPDATE: Added 'specific_topic' argument ---
 def format_prompt_for_generation(questions_series, subject, num_to_generate, specific_topic="General"):
     if subject == 'math':
         subject_name = "Math"
@@ -123,11 +121,12 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate, spe
         reasoning_text = "Provide the **full arithmetic solution** using a concise, numbered sequence of calculations. **DO NOT use algebra**. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
         topic_examples = "Fractions, Algebra, Ratios"
     else:
-        subject_name = subject.title()
+        # Defaulting to Science since GK is removed
+        subject_name = "Science" 
         difficulty_text = "moderately harder"
         difficulty_detail = "require **one or two extra steps**"
-        reasoning_text = "Provide 2-3 key facts or principles necessary to reach the conclusion. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        topic_examples = "Key Concepts, Application, Analysis"
+        reasoning_text = "Provide 2-3 key scientific facts or principles necessary to reach the conclusion. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
+        topic_examples = "Energy, Life Cycles, Matter"
 
     system_message = (
         f"You are an expert **{subject_name}** tutor in Singapore. Your task is to help a Primary 6 student (11-12 years old)."
@@ -273,7 +272,6 @@ def parse_generated_questions(text_blob, questions_list_so_far):
         
     return new_questions
 
-# --- UPDATE: Added 'specific_topic' argument ---
 def process_generation_loop(file_path, subject_lower, num_to_generate, specific_topic):
     final_generated_list = []
     retries_used = 0
@@ -289,7 +287,6 @@ def process_generation_loop(file_path, subject_lower, num_to_generate, specific_
         
         time.sleep(5) 
         
-        # --- UPDATE: Passing specific_topic to the prompt formatter ---
         system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed, specific_topic)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL, f"{subject_lower} MCQ Task", subject_lower)
         st.session_state.total_tokens_used += tokens_used
@@ -411,13 +408,13 @@ def main():
 
     api_key = st.sidebar.text_input("Enter your Google API Key:", type="password")
 
-    # 1. Main Subject Selection
+    # 1. Main Subject Selection (GK REMOVED)
     subject_name = st.sidebar.selectbox(
         "1. Choose a subject:",
-        ["English", "Chinese", "Math", "Science", "General Knowledge"]
+        ["English", "Chinese", "Math", "Science"]
     )
 
-    # 2. Logic for Topics Dropdown (The New Feature!)
+    # 2. Logic for Topics Dropdown (GK REMOVED)
     selected_topic = "General" # Default
 
     if subject_name == "Math":
@@ -430,12 +427,7 @@ def main():
             "   Select a Science Topic:",
             ["Diversity (Living Things)", "Cycles (Water/Life)", "Systems (Body/Plant)", "Interactions (Forces/Environment)", "Energy (Light/Heat/Electricity)"]
         )
-    elif subject_name == "General Knowledge":
-        selected_topic = st.sidebar.selectbox(
-            "   Select a GK Topic:",
-            ["World Geography", "Current Affairs", "History", "Technology", "Nature"]
-        )
-    # Note: English/Chinese usually focus on passage generation, so we keep them simple for now.
+    # English/Chinese handled without specific topics
 
     if subject_name in ["English", "Chinese"]:
         num_to_generate = st.sidebar.number_input(
@@ -494,17 +486,15 @@ def main():
                         else:
                             st.error("Failed to get a response from the AI.")
 
-                    # --- UPDATED LOGIC FOR MCQ SUBJECTS ---
-                    elif subject_lower in ['math', 'science', 'general knowledge']:
+                    # --- UPDATED LOGIC (GK REMOVED) ---
+                    elif subject_lower in ['math', 'science']:
                         
                         if subject_lower == 'math':
                             file_path = MATH_EXCEL_FILE_PATH
-                        elif subject_lower == 'science':
+                        else: # Assumes Science
                             file_path = SCIENCE_EXCEL_FILE_PATH
-                        else:
-                            file_path = GK_EXCEL_FILE_PATH
                             
-                        # --- UPDATE: Pass the 'selected_topic' to the loop ---
+                        # Pass the 'selected_topic' to the loop
                         generated_list = process_generation_loop(file_path, subject_lower, num_to_generate, selected_topic)
                         
                         if generated_list:
