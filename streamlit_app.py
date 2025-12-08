@@ -13,7 +13,7 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
-GEMINI_MODEL = 'gemini-2.5-flash-lite' 
+GEMINI_MODEL = 'gemini-1.5-flash' 
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
@@ -72,31 +72,28 @@ def format_prompt_for_comprehension(subject, num_to_generate):
         language = "Chinese (简体中文)"
 
     system_message = (
-        f"You are an expert tutor in Singapore creating {language} comprehension passages for a Primary 6 student (11-12 years old)."
-        f"Your task is to generate a short story, **{num_to_generate} comprehension questions**, and the **answers** to those questions."
+        f"You are a strict, high-standard tutor in Singapore creating {language} comprehension passages for a Primary 6 student (12 years old)."
+        f"Your task is to generate a sophisticated short story and **{num_to_generate} highly challenging comprehension questions**."
         "\n\n"
-        "**STORY RULES:**"
+        "**STORY RULES (PSLE STANDARD):**"
         f"1.  The story must be in **{language}**."
-        "2.  It should be about **3 very short paragraphs** long, suitable for a 12-year-old, focusing on themes like **moral dilemmas, complex emotions, or subtle conflicts**."
-        "3.  The story must be engaging and contain themes they can understand."
+        "2.  It should be about **3 paragraphs** long. Vocabulary should be advanced (AL1 standard)."
+        "3.  Themes should be mature: **moral dilemmas, regret, sacrifice, or subtle emotional conflicts**."
         "\n\n"
-        "**QUESTION RULES: (CRITICAL - PSLE HIGH DIFFICULTY)**"
-        f"1.  You must generate exactly **{num_to_generate} questions** based on the story."
-        "2.  The questions must be **highly challenging**, suitable for a **Primary 6 examination (PSLE level)**."
-        "3.  Questions must focus on advanced comprehension skills such as **author's intent, tone, mood, figurative language meaning, implied motives, and predicting outcomes based on subtle textual evidence.**"
-        "4.  **AVOID** any direct-recall questions."
-        f"5.  Questions must be in **{language}**."
+        "**QUESTION RULES (CRITICAL THINKING ONLY):**"
+        f"1.  Generate exactly **{num_to_generate} questions**."
+        "2.  **DIFFICULTY:** Questions must be 'Inferential' or 'Critical Analysis'. **NO direct look-and-find questions.**"
+        "3.  Students must be required to 'read between the lines' to find the answer."
+        f"4.  Questions must be in **{language}**."
         "\n\n"
-        "**ANSWER RULES:**"
-        f"1.  You must provide clear, simple answers for **all {num_to_generate} questions**."
-        f"2.  The answers must be concise, **no longer than two short sentences each**, to ensure they fit neatly on a display without scrolling."
-        f"3.  Answers must be in **{language}**."
+        "**VERIFICATION STEP:**"
+        "Before writing the Answer, you must verify that the answer is NOT explicitly written in the text, but logically deduced from it."
         "\n\n"
         "**OUTPUT FORMAT:**"
         "You MUST follow this exact plain-text format:"
         "\n"
         "[Story]"
-        "(Your 3-paragraph story in {language} goes here...)"
+        "(Your advanced story in {language} goes here...)"
         "\n\n"
         "[Questions]"
         f"1. (Your first {language} question...)\n"
@@ -104,67 +101,60 @@ def format_prompt_for_comprehension(subject, num_to_generate):
         f"{num_to_generate}. (Your last {language} question...)\n"
         "\n"
         "[Answers]"
-        f"1. (The answer to question 1...)\n"
+        f"1. (The answer...)\n"
         "...\n"
-        f"{num_to_generate}. (The answer to question {num_to_generate}...)\n"
+        f"{num_to_generate}. (The answer...)\n"
     )
     
-    user_prompt = f"Please generate one (1) P6 {language} comprehension passage, {num_to_generate} **highly challenging PSLE-level** questions, and the corresponding answers. Follow the format strictly."
+    user_prompt = f"Please generate one (1) P6 {language} comprehension passage, {num_to_generate} **highly challenging** questions, and the corresponding answers. Follow the format strictly."
     
     return system_message, user_prompt
 
 def format_prompt_for_generation(questions_series, subject, num_to_generate, specific_topic="General"):
     if subject == 'math':
         subject_name = "Math"
-        difficulty_text = "moderately harder"
-        difficulty_detail = "require **one or two extra steps**"
-        reasoning_text = "Provide the **full arithmetic solution** using a concise, numbered sequence of calculations. **DO NOT use algebra**. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        topic_examples = "Fractions, Algebra, Ratios"
+        difficulty_text = "EXTREMELY CHALLENGING (PSLE AL1 / A* Standard)"
+        difficulty_detail = "require **heuristics, working backwards, or multi-step logic**"
+        # Updated instructions for Math verification
+        reasoning_text = "Step 1: State the heuristic used. Step 2: Show the calculation. Step 3: Verify why the Distractors are wrong (common mistakes)."
+        topic_examples = "Fractions, Algebra, Ratios, Speed, Volume"
     else:
-        # Defaulting to Science since GK is removed
         subject_name = "Science" 
-        difficulty_text = "moderately harder"
-        difficulty_detail = "require **one or two extra steps**"
-        reasoning_text = "Provide 2-3 key scientific facts or principles necessary to reach the conclusion. The reasoning must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        topic_examples = "Energy, Life Cycles, Matter"
+        difficulty_text = "EXTREMELY CHALLENGING (PSLE AL1 / A* Standard)"
+        difficulty_detail = "require **application of concepts in unfamiliar scenarios (experimental setups)**"
+        # Updated instructions for Science verification
+        reasoning_text = "Step 1: Identify the scientific concept. Step 2: Explain the link to the scenario. Step 3: Explain why the other options are plausible misconceptions but incorrect."
+        topic_examples = "Energy, Life Cycles, Matter, Forces"
 
     system_message = (
-        f"You are an expert **{subject_name}** tutor in Singapore. Your task is to help a Primary 6 student (11-12 years old)."
+        f"You are a strict **{subject_name}** setter for the PSLE exams in Singapore. Your goal is to test the top 10% of students."
         "\n\n"
         f"I will provide a list of reference **{subject_name}** questions."
-        f"Your task is to generate {num_to_generate} new **multiple-choice questions** specifically about the topic: **{specific_topic}**."
+        f"Your task is to generate {num_to_generate} new **High-Difficulty MCQs** specifically about: **{specific_topic}**."
         "\n\n"
-        "**DIFFICULTY REQUIREMENT:**"
-        f"The new questions must be **{difficulty_text}** than the reference questions. They should test **{specific_topic}** but {difficulty_detail}, while still being solvable by a P6 student."
+        "**DIFFICULTY REQUIREMENT (AL1 STANDARD):**"
+        f"The new questions must be **{difficulty_text}**. They must {difficulty_detail}."
+        "The questions should not be straightforward. They should contain 'traps' or 'distractors' that look correct if the student misses a small detail."
         "\n\n"
-        "**CRITICAL OUTPUT CONSTRAINTS FOR DISPLAY (MANDATORY):**"
-        "To ensure the questions fit neatly on a computer screen without horizontal scrolling, the following rules must be strictly adhered to:"
-        "1.  The main **Question** text itself must be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        "2.  All **Options (A, B, C, D)** must also be **manually word-wrapped** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
-        "3.  The **Reasoning** must follow the same rule: **manually word-wrap** by inserting a **newline character (\\n)** at the nearest word break so that **no line exceeds 60 characters**."
+        "**MANDATORY VERIFICATION (Double-Check):**"
+        "For every question, before you finalize the output, you must internally calculate the answer to ensure it is 100% correct. **If the logic is weak, discard it and try again.**"
         "\n\n"
-        "**INTERNAL REVIEW PROCESS (MANDATORY):**"
-        "For each new question you create, you must **first think step-by-step**:"
-        f"1.  **Topic Check:** Does this question specifically test **{specific_topic}**? If not, discard it."
-        "2.  **Think of a scenario** involving this topic."
-        f"3.  **Apply Difficulty:** How can I make this new scenario **{difficulty_text}**?"
-        "4.  **Identify Fields:** What is the specific `Topic`? What is the `Difficulty`? What is the `Reasoning` for the correct answer (must be a numbered breakdown/fact list)?"
-        "5.  **Check for Variety:** Is this new question too similar to one I've already made? If yes, pick a different reference question."
+        "**CRITICAL OUTPUT CONSTRAINTS:**"
+        "1.  **Word-Wrap:** Manually insert `\\n` every 60 characters for Question, Options, and Reasoning."
+        "2.  **Options:** Generate 4 options (A, B, C, D). **One is correct. Three are 'Distractors' based on common student errors.**"
         "\n\n"
         "**OUTPUT FORMAT:**"
         "Your response MUST follow this exact plain-text format for each question. Do NOT use JSON."
         "\n\n"
-        "**CRITICAL:** You MUST NOT include any of your internal thoughts, explanations, or any text outside of the final, formatted question blocks. Your response must begin *immediately* with `[Reference: ...]` and contain *only* the {num_to_generate} question blocks."
-        "\n\n"
         "[Reference: 0]\n"
-        "Question: Your new question text...\n"
-        "Difficulty: (e.g., Medium, Hard)\n"
+        "Question: (Your complex question text...)\n"
+        "Difficulty: Hard\n"
         f"Topic: {specific_topic}\n"
-        "A) Option A\n"
-        "B) Option B\n"
-        "C) Option C\n"
-        "D) Option D\n"
-        "Answer: (B)\n"
+        "A) (Distractor 1)\n"
+        "B) (Distractor 2)\n"
+        "C) (Distractor 3)\n"
+        "D) (Correct Answer)\n"
+        "Answer: (D)\n"
         f"Reasoning: ({reasoning_text})\n"
         "\n"
         "[Reference: 1]\n"
@@ -175,15 +165,16 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate, spe
     user_message_parts = [f"Here are the reference **{subject_name}** questions (indexed 0-{len(questions_series)-1}):\n\n"]
     for i, question_text in enumerate(questions_series):
         user_message_parts.append(f"{i}. {question_text}\n")
-    user_message_parts.append(f"\nPlease generate {num_to_generate} new, unique, **{difficulty_text}** {subject_name} MCQs specifically on the topic **{specific_topic}**, following the exact output format.")
+    user_message_parts.append(f"\nPlease generate {num_to_generate} new, **{difficulty_text}** {subject_name} MCQs on **{specific_topic}**. Ensure you verify the answer key is correct.")
     
     return system_message, "".join(user_message_parts)
 
 def call_gemini_api(system_message, user_prompt, model, task_name="task", subject=""):
-    if subject in ['english', 'chinese', 'science']:
-        temp = 0.7
+    # Lower temp for Math/Science to ensure logic is strict
+    if subject in ['math', 'science']:
+        temp = 0.3 
     else:
-        temp = 0.4
+        temp = 0.7
         
     try:
         generation_config = genai.types.GenerationConfig(
@@ -392,7 +383,7 @@ def display_mcq_session():
             else:
                 st.error(f"❌ **Incorrect.** You selected **{user_letter}**, but the correct answer is **{correct_letter}**.")
             
-            st.markdown("**Reasoning:**")
+            st.markdown("**Reasoning (Verified):**")
             st.code(item.get('reasoning', 'N/A'), language='text')
         else:
             st.warning("Please select an option before checking.")
@@ -408,13 +399,13 @@ def main():
 
     api_key = st.sidebar.text_input("Enter your Google API Key:", type="password")
 
-    # 1. Main Subject Selection (GK REMOVED)
+    # 1. Main Subject Selection
     subject_name = st.sidebar.selectbox(
         "1. Choose a subject:",
         ["English", "Chinese", "Math", "Science"]
     )
 
-    # 2. Logic for Topics Dropdown (GK REMOVED)
+    # 2. Logic for Topics Dropdown
     selected_topic = "General" # Default
 
     if subject_name == "Math":
@@ -427,7 +418,6 @@ def main():
             "   Select a Science Topic:",
             ["Diversity (Living Things)", "Cycles (Water/Life)", "Systems (Body/Plant)", "Interactions (Forces/Environment)", "Energy (Light/Heat/Electricity)"]
         )
-    # English/Chinese handled without specific topics
 
     if subject_name in ["English", "Chinese"]:
         num_to_generate = st.sidebar.number_input(
@@ -486,12 +476,12 @@ def main():
                         else:
                             st.error("Failed to get a response from the AI.")
 
-                    # --- UPDATED LOGIC (GK REMOVED) ---
+                    # --- MCQ ---
                     elif subject_lower in ['math', 'science']:
                         
                         if subject_lower == 'math':
                             file_path = MATH_EXCEL_FILE_PATH
-                        else: # Assumes Science
+                        else: # Science
                             file_path = SCIENCE_EXCEL_FILE_PATH
                             
                         # Pass the 'selected_topic' to the loop
@@ -517,4 +507,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
