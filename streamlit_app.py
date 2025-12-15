@@ -14,10 +14,13 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
+# 🌟 CHANGE 1: Using the more robust model to mitigate stability issues
 GEMINI_MODEL = 'gemini-2.5-flash-lite' 
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
+# 🌟 New constant for robust delay in loops
+API_DELAY_SECONDS = 5
 
 # --- Session State Initialization ---
 def initialize_session_state():
@@ -100,6 +103,8 @@ def grade_student_answer(question, model_answer, student_answer, subject):
         response = genai.GenerativeModel(GEMINI_MODEL).generate_content(prompt)
         return response.text
     except Exception as e:
+        # 🌟 Added sleep here to prevent immediate rate limit on grading
+        time.sleep(API_DELAY_SECONDS) 
         return f"Error grading answer: {e}"
 
 def format_prompt_for_generation(questions_series, subject, num_to_generate, specific_topic, question_type):
@@ -157,7 +162,7 @@ def format_prompt_for_generation(questions_series, subject, num_to_generate, spe
         f"Topic: **{specific_topic}**\n"
         f"Difficulty: **{difficulty_text}**\n\n"
         "**OUTPUT FORMAT (Strictly Follow):**\n"
-        "Your response must be a plain-text list of blocks. Do not use JSON.\n"
+        "Your response must be a plain-text list of blocks. Do NOT use JSON.\n"
         f"{output_format_example}\n"
         "\n[Reference: 1]\n..."
     )
@@ -180,8 +185,10 @@ def call_gemini_api(system_message, user_prompt, model):
         response = gemini_model.generate_content(user_prompt)
         total_tokens = getattr(response.usage_metadata, 'total_token_count', 0)
         return response.text, total_tokens
+    # 🌟 More robust error handling for API failures
     except Exception as e:
-        st.error(f"Error communicating with Gemini API: {e}")
+        st.error(f"Error communicating with Gemini API: {e}. Waiting {API_DELAY_SECONDS} seconds before potential retry...")
+        time.sleep(API_DELAY_SECONDS) # Wait before returning failure
         return None, 0
 
 def parse_generated_questions(text_blob, questions_list_so_far, question_type):
@@ -251,7 +258,9 @@ def process_generation_loop(file_path, subject_lower, num_to_generate, specific_
         reference_subset = questions_series.sample(min(QUESTIONS_TO_SELECT, questions_needed * 5, len(questions_series))) 
         
         st.info(f"Attempt {retries_used + 1}/{MAX_RETRIES}: Generating {questions_needed} ({question_type}) questions...")
-        time.sleep(3) 
+        
+        # 🌟 Increased time sleep before API call to reduce rate-limit likelihood
+        time.sleep(API_DELAY_SECONDS) 
         
         system_msg, user_prompt = format_prompt_for_generation(reference_subset, subject_lower, questions_needed, specific_topic, question_type)
         generation_text, tokens_used = call_gemini_api(system_msg, user_prompt, GEMINI_MODEL)
@@ -266,6 +275,8 @@ def process_generation_loop(file_path, subject_lower, num_to_generate, specific_
             else:
                 st.warning("Parser failed. Retrying...")
         else:
+            # call_gemini_api already logged the error and slept, so we just break here if it fails
+            st.error("Generation attempt failed. Stopping generation loop.")
             break
         retries_used += 1
 
@@ -417,4 +428,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
