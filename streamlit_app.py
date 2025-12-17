@@ -16,7 +16,7 @@ st.set_page_config(page_title="AI Question Generator", layout="wide")
 MATH_EXCEL_FILE_PATH = 'Math.xlsx'
 SCIENCE_EXCEL_FILE_PATH = 'Science.xlsx'
 
-GEMINI_MODEL = 'gemini-2.5-flash' 
+GEMINI_MODEL = 'gemini-2.5-flash-lite' 
 QUESTION_COLUMN_NAME = 'Question Text'
 QUESTIONS_TO_SELECT = 50 
 MAX_RETRIES = 5 
@@ -438,3 +438,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
